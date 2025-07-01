@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'dashboard.dart'; // Ensure this is the correct screen after login
+import 'mainscreen/dashboard.dart'; // Ensure this is the correct screen after login
 
 class LoginScreen extends StatefulWidget {
   @override

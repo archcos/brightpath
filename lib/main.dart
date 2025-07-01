@@ -2,6 +2,7 @@ import 'package:brightpath/display/login.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'display/mainscreen/dashboard.dart';
 import 'firebase_options.dart';
 
 
@@ -51,8 +52,40 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Supabase Login Example',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: LoginScreen(), // Route to the LoginScreen
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0A0E21),
+        primaryColor: const Color(0xFF1A237E),
+        cardColor: Colors.indigo.shade800,
+        canvasColor: const Color(0xFF0A0E21),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Colors.white70),
+          labelLarge: TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white70),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0A0E21),
+          foregroundColor: Colors.white,
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Color(0xFF0A0E21),
+          selectedItemColor: Colors.white,
+          unselectedItemColor: Colors.white38,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.indigo.shade600,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
+      initialRoute: '/login',
+      routes: {
+        '/login': (context) => LoginScreen(),
+        '/dashboard': (context) => const DashboardScreen(),
+        // Add other screens here as needed
+      },
     );
   }
 }

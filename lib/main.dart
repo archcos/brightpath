@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'display/mainscreen/dashboard.dart';
+import 'display/mainscreen/sidebar/admin_configuration.dart';
 import 'firebase_options.dart';
 
 
@@ -87,6 +88,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => LoginScreen(),
         '/dashboard': (context) => const DashboardScreen(),
+        '/admin': (context) => const AdminUserManagementScreen(),
         // Add other screens here
       },
     );

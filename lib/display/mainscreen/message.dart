@@ -101,9 +101,8 @@ class MessagesListPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Conversations", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+        title: const Text("Conversations", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
         centerTitle: true,
-        backgroundColor: Colors.lightBlueAccent,
         elevation: 5,
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(

@@ -2,10 +2,14 @@ import 'package:brightpath/display/mainscreen/calendar.dart';
 import 'package:brightpath/display/mainscreen/intevention.dart';
 import 'package:brightpath/display/mainscreen/message.dart';
 import 'package:brightpath/display/mainscreen/reminder.dart';
+import 'package:brightpath/display/mainscreen/sidebar/contact_us.dart';
 import 'package:brightpath/display/mainscreen/subscreen/dashboard_summary.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
+import 'sidebar/profile.dart';
 
 
 final user = FirebaseAuth.instance.currentUser;
@@ -16,6 +20,7 @@ class DashboardScreen extends StatefulWidget {
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
+
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
@@ -28,6 +33,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     InterventionScreen(),
     MessagesListPage(userId: user!.email),
   ];
+
+
 
   void _onBottomNavTap(int index) {
     setState(() {
@@ -139,27 +146,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                         ListTile(
-                          title: const Text('Dashboard', style: TextStyle(color: Colors.white)),
-                          leading: const Icon(Icons.dashboard, color: Colors.white),
+                          title: const Text('Profile', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.person, color: Colors.white),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                            );
+                          },
+                        ),
+                        ListTile(
+                          title: const Text('Messages', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.message_rounded, color: Colors.white),
+                          onTap: () {
+                            _onBottomNavTap(4);
+                            _toggleSidebar();
+                          },
+                        ),
+                        ListTile(
+                          title: const Text('Home', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.home, color: Colors.white),
                           onTap: () {
                             _onBottomNavTap(0);
                             _toggleSidebar();
                           },
                         ),
                         ListTile(
-                          title: const Text('Notifications', style: TextStyle(color: Colors.white)),
-                          leading: const Icon(Icons.notifications, color: Colors.white),
+                          title: const Text('Calendar', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.calendar_month, color: Colors.white),
                           onTap: () {
                             _onBottomNavTap(1);
                             _toggleSidebar();
                           },
                         ),
                         ListTile(
-                          title: const Text('Profile', style: TextStyle(color: Colors.white)),
-                          leading: const Icon(Icons.person, color: Colors.white),
+                          title: const Text('Reminders', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.notifications, color: Colors.white),
                           onTap: () {
                             _onBottomNavTap(2);
                             _toggleSidebar();
+                          },
+                        ),
+                        ListTile(
+                          title: const Text('Interventions', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.waving_hand, color: Colors.white),
+                          onTap: () {
+                            _onBottomNavTap(3);
+                            _toggleSidebar();
+                          },
+                        ),
+                        ListTile(
+                          title: const Text('Contact Us', style: TextStyle(color: Colors.white)),
+                          leading: const Icon(Icons.contact_support_rounded, color: Colors.white),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const ContactUsScreen()),
+                            );
+                          },
+                        ),
+                        FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(FirebaseAuth.instance.currentUser?.email)
+                              .get(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
+                            if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
+
+                            final userType = snapshot.data!.get('type');
+                            if (userType != 'Admin') return const SizedBox();
+
+                            return ListTile(
+                              title: const Text('Admin Configurations', style: TextStyle(color: Colors.white)),
+                              leading: const Icon(Icons.admin_panel_settings, color: Colors.white),
+                              onTap: () {
+                                Navigator.pushNamed(context, '/admin');
+                              },
+                            );
                           },
                         ),
                         const Spacer(),

@@ -39,6 +39,8 @@ class _LoginScreenState extends State<LoginScreen> {
         'name': user.displayName ?? user.email!.split('@')[0],
         'last_login': '',
         'current_login': now.toIso8601String(),
+        'type': 'parent',
+        'status': 'active',
       });
     }
   }

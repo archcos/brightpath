@@ -1,4 +1,5 @@
 import 'package:brightpath/display/login.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -49,9 +50,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Supabase Login Example',
+      title: 'BrightPath',
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0A0E21),
@@ -80,11 +83,11 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      initialRoute: '/login',
+      home: user == null ? LoginScreen() : const DashboardScreen(),
       routes: {
         '/login': (context) => LoginScreen(),
         '/dashboard': (context) => const DashboardScreen(),
-        // Add other screens here as needed
+        // Add other screens here
       },
     );
   }

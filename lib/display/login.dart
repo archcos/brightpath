@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'mainscreen/dashboard.dart'; // Ensure this is the correct screen after login
+import 'package:intl/intl.dart';
+import 'mainscreen/dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -13,7 +15,34 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  // Handles user login with email and password
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// Save or update user info in Firestore
+  Future<void> _updateUserData(User user) async {
+    final now = DateTime.now();
+
+    final userRef = _firestore.collection('users').doc(user.email);
+
+    final docSnapshot = await userRef.get();
+
+    if (docSnapshot.exists) {
+      // If user already exists, update last login and current login
+      final data = docSnapshot.data()!;
+      await userRef.update({
+        'name': user.displayName ?? data['name'] ?? '',
+        'last_login': data['current_login'] ?? now.toIso8601String(),
+        'current_login': now.toIso8601String(),
+      });
+    } else {
+      // If new user, create a new document
+      await userRef.set({
+        'name': user.displayName ?? user.email!.split('@')[0],
+        'last_login': '',
+        'current_login': now.toIso8601String(),
+      });
+    }
+  }
+
   Future<void> _signInWithEmail() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -31,11 +60,14 @@ class _LoginScreenState extends State<LoginScreen> {
         password: password,
       );
 
-      if (userCredential.user != null) {
+      final user = userCredential.user;
+      if (user != null) {
+        await _updateUserData(user);
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Welcome, ${userCredential.user!.email}!')),
+          SnackBar(content: Text('Welcome, ${user.email}!')),
         );
-        // Navigate to HomeScreen
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => DashboardScreen()),
@@ -48,34 +80,45 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Handles Google Sign-In
   Future<void> _signInWithGoogle() async {
     try {
-      // Always prompt for account selection
-      await _googleSignIn.signOut(); // Ensure a fresh login by logging out any existing session
+      await _googleSignIn.signOut(); // Force account selection
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
-      if (googleUser == null) {
-        // The user canceled the sign-in
-        return;
-      }
+      if (googleUser == null) return; // Cancelled
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
-      // Create a new credential for Firebase using the Google credentials
-      final AuthCredential credential = GoogleAuthProvider.credential(
+      final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in with Firebase using the Google credentials
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
 
-      if (userCredential.user != null) {
+      if (user != null) {
+        await _updateUserData(user);
+
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.email)
+            .get();
+
+        final rawTimestamp = doc.data()?['last_login'];
+        String formattedTime = 'First login';
+
+        if (rawTimestamp != null && rawTimestamp.toString().isNotEmpty) {
+          final dt = DateTime.parse(rawTimestamp);
+          formattedTime = DateFormat('MMMM d, y • h:mm:ss a').format(dt);
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Welcome, ${userCredential.user!.displayName}!')),
+            SnackBar(content: Text('Welcome, ${user.displayName}!\nLast login: $formattedTime'),
+            duration: const Duration(seconds: 4),
+          ),
         );
-        // Navigate to HomeScreen
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => DashboardScreen()),

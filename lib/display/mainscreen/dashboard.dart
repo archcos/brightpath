@@ -1,7 +1,14 @@
 import 'package:brightpath/display/mainscreen/calendar.dart';
+import 'package:brightpath/display/mainscreen/intevention.dart';
+import 'package:brightpath/display/mainscreen/message.dart';
+import 'package:brightpath/display/mainscreen/reminder.dart';
+import 'package:brightpath/display/mainscreen/subscreen/dashboard_summary.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
+
+final user = FirebaseAuth.instance.currentUser;
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -14,12 +21,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   bool _isSidebarOpen = false;
 
-  final List<Widget> _pages = const [
-    DashboardHome(),
-    CalendarScreen(),
-    Center(child: Text('Reminders')),
-    Center(child: Text('Interventions')),
-    Center(child: Text('Message')),
+  final List<Widget> _pages = [
+    const DashboardHome(),
+    const CalendarScreen(),
+    ReminderScreen(),
+    InterventionScreen(),
+    MessagesListPage(userId: user!.email),
   ];
 
   void _onBottomNavTap(int index) {
@@ -105,6 +112,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              Center(
+                                child:  CircleAvatar(
+                                  radius: 40,
+                                  backgroundImage: user?.photoURL != null
+                                      ? NetworkImage(user!.photoURL!)
+                                      : const AssetImage('assets/defavatar.png') as ImageProvider,
+                                  backgroundColor: Colors.white24,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                user?.displayName ?? user?.email ?? 'User',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
                         ListTile(
                           title: const Text('Dashboard', style: TextStyle(color: Colors.white)),
                           leading: const Icon(Icons.dashboard, color: Colors.white),
@@ -135,10 +168,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           leading: const Icon(Icons.logout, color: Colors.white),
                           onTap: () async {
                             _toggleSidebar();
-
                             await GoogleSignIn().signOut();
                             await FirebaseAuth.instance.signOut();
-
                             if (!context.mounted) return;
                             Navigator.pushReplacementNamed(context, '/login');
                           },
@@ -174,7 +205,6 @@ class DashboardHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
     final firstName = user?.displayName?.split(' ').first ?? user?.email ?? 'User';
 
     final List<Map<String, dynamic>> tiles = [
@@ -228,7 +258,15 @@ class DashboardHome extends StatelessWidget {
                       label: tile['label'],
                       description: tile['description'],
                       onTap: () {
-                        debugPrint('Tapped on ${tile['label']}');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DashboardSummary(
+                              subject: tile['subject'],
+                              label: tile['label'],
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -251,7 +289,15 @@ class DashboardHome extends StatelessWidget {
                       label: tile['label'],
                       description: tile['description'],
                       onTap: () {
-                        debugPrint('Tapped on ${tile['label']}');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DashboardSummary(
+                              subject: tile['subject'],
+                              label: tile['label'],
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),

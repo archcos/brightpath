@@ -1,4 +1,5 @@
 import 'package:brightpath/display/login.dart';
+import 'package:brightpath/display/mainscreen/sidebar/add_student.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -89,6 +90,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/dashboard': (context) => const DashboardScreen(),
         '/admin': (context) => const AdminUserManagementScreen(),
+        '/student': (context) => const AddStudentToClassScreen(),
         // Add other screens here
       },
     );

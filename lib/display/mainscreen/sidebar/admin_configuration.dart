@@ -10,7 +10,7 @@ class AdminUserManagementScreen extends StatefulWidget {
 
 class _AdminUserManagementScreenState extends State<AdminUserManagementScreen> {
   final List<String> statusOptions = ['Active', 'Inactive', 'Suspended'];
-  final List<String> typeOptions = ['Student', 'Teacher', 'Admin'];
+  final List<String> typeOptions = ['Parent', 'Teacher', 'Admin'];
 
   String searchQuery = '';
   String? selectedStatus;

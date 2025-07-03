@@ -1,184 +1,143 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
 import 'mainscreen/dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Save or update user info in Firestore
+  /* ───────────────── Firestore helper ───────────────── */
   Future<void> _updateUserData(User user) async {
     final now = DateTime.now();
+    final docRef = _firestore.collection('users').doc(user.email);
+    final snap   = await docRef.get();
 
-    final userRef = _firestore.collection('users').doc(user.email);
-
-    final docSnapshot = await userRef.get();
-
-    if (docSnapshot.exists) {
-      // If user already exists, update last login and current login
-      final data = docSnapshot.data()!;
-      await userRef.update({
-        'name': user.displayName ?? data['name'] ?? '',
-        'last_login': data['current_login'] ?? now.toIso8601String(),
+    if (snap.exists) {
+      final data = snap.data()!;
+      await docRef.update({
+        'name'        : user.displayName ?? data['name'] ?? '',
+        'last_login'  : data['current_login'] ?? now.toIso8601String(),
         'current_login': now.toIso8601String(),
       });
     } else {
-      // If new user, create a new document
-      await userRef.set({
-        'name': user.displayName ?? user.email!.split('@')[0],
-        'last_login': '',
+      await docRef.set({
+        'name'        : user.displayName ?? user.email!.split('@')[0],
+        'last_login'  : '',
         'current_login': now.toIso8601String(),
-        'type': 'parent',
-        'status': 'active',
+        'type'        : 'Parent',
+        'status'      : 'Active',
+        'created_date': now.toIso8601String(),
       });
     }
   }
 
-  Future<void> _signInWithEmail() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter email and password')),
-      );
-      return;
-    }
-
-    try {
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = userCredential.user;
-      if (user != null) {
-        await _updateUserData(user);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Welcome, ${user.email}!')),
-        );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => DashboardScreen()),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: ${e.toString()}')),
-      );
-    }
-  }
-
+  /* ───────────────── Google sign‑in ─────────────────── */
   Future<void> _signInWithGoogle() async {
     try {
-      await _googleSignIn.signOut(); // Force account selection
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      await _googleSignIn.signOut();               // always prompt
+      final gUser = await _googleSignIn.signIn();
+      if (gUser == null) return;                   // cancelled
 
-      if (googleUser == null) return; // Cancelled
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
+      final gAuth     = await gUser.authentication;
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+        accessToken: gAuth.accessToken,
+        idToken    : gAuth.idToken,
       );
 
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final user = userCredential.user;
+      final userCred = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user     = userCred.user;
+      if (user == null) return;
 
-      if (user != null) {
-        await _updateUserData(user);
+      await _updateUserData(user);
 
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.email)
-            .get();
+      /* last‑login snack */
+      final doc     = await _firestore.collection('users').doc(user.email).get();
+      final rawTime = doc.data()?['last_login'];
+      final lastLog = rawTime == null || rawTime == ''
+          ? 'First login'
+          : DateFormat('MMMM d, y • h:mm:ss a').format(DateTime.parse(rawTime));
 
-        final rawTimestamp = doc.data()?['last_login'];
-        String formattedTime = 'First login';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content : Text('Welcome, ${user.displayName}!\nLast login: $lastLog'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
 
-        if (rawTimestamp != null && rawTimestamp.toString().isNotEmpty) {
-          final dt = DateTime.parse(rawTimestamp);
-          formattedTime = DateFormat('MMMM d, y • h:mm:ss a').format(dt);
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Welcome, ${user.displayName}!\nLast login: $formattedTime'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => DashboardScreen()),
-        );
-      }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google Sign-In failed: ${e.toString()}')),
+        SnackBar(content: Text('Google Sign‑In failed: $e')),
       );
     }
   }
 
+  /* ───────────────── UI ─────────────────────────────── */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.emailAddress,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                /* header banner */
+                Image.asset(
+                  'assets/header.png',
+                  width: 240,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(height: 32),
+
+                /* instructions */
+                const Text(
+                  'Sign in with your Google account to continue.',
+                  style: TextStyle(fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                /* Google sign‑in button */
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _signInWithGoogle,
+                    icon: Image.asset(
+                      'assets/google.png',
+                      height: 24,
+                    ),
+                    label: const Text(
+                      'Sign in with Google',
+                      style: TextStyle(fontSize: 16, color: Colors.black87),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side   : const BorderSide(color: Colors.grey),
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _signInWithEmail,
-              child: const Text('Login with Email'),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _signInWithGoogle,
-              child: const Text('Login with Google'),
-            ),
-          ],
+          ),
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
   }
 }

@@ -70,6 +70,8 @@ flutter:
      - .env
      - assets/header.png
      - assets/defavatar.png
+     - assets/google.png
+
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

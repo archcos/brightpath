@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'sidebar/add_child.dart';
 import 'sidebar/profile.dart';
 
 
@@ -155,6 +156,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),
+                        FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(FirebaseAuth.instance.currentUser?.email)
+                              .get(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
+                            if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
+
+                            final userType = snapshot.data!.get('type');
+                            if (userType != 'Parent') return const SizedBox();
+
+                            return ListTile(
+                              title: const Text('Register Child', style: TextStyle(color: Colors.white)),
+                              leading: const Icon(Icons.child_care_rounded, color: Colors.white),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const AddChildScreen()),
+                                );
+                              },
+                            );
+                          },
+                        ),
                         ListTile(
                           title: const Text('Messages', style: TextStyle(color: Colors.white)),
                           leading: const Icon(Icons.message_rounded, color: Colors.white),
@@ -202,6 +227,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(builder: (context) => const ContactUsScreen()),
+                            );
+                          },
+                        ),
+
+                        FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(FirebaseAuth.instance.currentUser?.email)
+                              .get(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
+                            if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
+
+                            final userType = snapshot.data!.get('type');
+                            if (userType != 'Admin') return const SizedBox();
+
+                            return ListTile(
+                              title: const Text('Teacher Configurations', style: TextStyle(color: Colors.white)),
+                              leading: const Icon(Icons.admin_panel_settings, color: Colors.white),
+                              onTap: () {
+                                Navigator.pushNamed(context, '/student');
+                              },
                             );
                           },
                         ),

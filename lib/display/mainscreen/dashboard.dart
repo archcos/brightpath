@@ -3,17 +3,16 @@ import 'package:brightpath/display/mainscreen/intevention.dart';
 import 'package:brightpath/display/mainscreen/message.dart';
 import 'package:brightpath/display/mainscreen/reminder.dart';
 import 'package:brightpath/display/mainscreen/sidebar/contact_us.dart';
+import 'package:brightpath/display/mainscreen/sidebar/test.dart';
 import 'package:brightpath/display/mainscreen/subscreen/dashboard_summary.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-
+import 'parent_dashboard.dart';
 import 'sidebar/add_child.dart';
 import 'sidebar/profile.dart';
-
-
-final user = FirebaseAuth.instance.currentUser;
+import 'teacher_dashboard.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -22,19 +21,49 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   bool _isSidebarOpen = false;
+  String? _userType;
 
-  final List<Widget> _pages = [
-    const DashboardHome(),
-    const CalendarScreen(),
-    ReminderScreen(),
-    InterventionScreen(),
-    MessagesListPage(userId: user!.email),
-  ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadUserType();
+  }
+
+  Future<void> _loadUserType() async {
+    final email = FirebaseAuth.instance.currentUser?.email;
+    if (email == null) return;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(email)
+        .get();
+
+    if (mounted && doc.exists) {
+      setState(() {
+        _userType = doc.data()?['type']; // ex: "Teacher" or "Parent"
+      });
+    }
+  }
+
+  List<Widget> get _pages {
+    final homePage = (_userType == 'Parent')
+        ? const DashboardHome()       // <— parent / default UI
+        : const TeacherDashboardPage(); // <— your teacher UI
+
+    return [
+      homePage,
+      const CalendarScreen(),
+      ReminderScreen(),
+      InterventionScreen(),
+      MessagesListPage(
+        userId: FirebaseAuth.instance.currentUser?.email ?? '',
+      ),
+    ];
+  }
 
 
   void _onBottomNavTap(int index) {
@@ -51,6 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
     final screenWidth = MediaQuery.of(context).size.width;
     final sidebarWidth = screenWidth * 0.7;
 
@@ -59,20 +89,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Column(
             children: [
-              const SizedBox(height: 70,),
-
+              const SizedBox(height: 70),
               Stack(
                 children: [
-
                   SizedBox(
-                      height: 50,
-                      width: double.infinity,
-                      child: Image.asset(
-                        'assets/header.png',
-                      ),
-                    ),
-                  const SizedBox(height: 100,),
-
+                    height: 50,
+                    width: double.infinity,
+                    child: Image.asset('assets/header.png'),
+                  ),
+                  const SizedBox(height: 100),
                   Positioned(
                     top: 16,
                     right: 16,
@@ -85,7 +110,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
-
               Expanded(
                 child: GestureDetector(
                   onTap: _isSidebarOpen ? _toggleSidebar : null,
@@ -94,7 +118,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-
           if (_isSidebarOpen)
             Positioned.fill(
               child: GestureDetector(
@@ -104,7 +127,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             right: _isSidebarOpen ? 0 : -sidebarWidth,
@@ -116,7 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: Colors.indigo.shade700,
                 child: SafeArea(
                   child: GestureDetector(
-                    onTap: () {}, // prevent sidebar close on tap inside
+                    onTap: () {},
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -125,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Column(
                             children: [
                               Center(
-                                child:  CircleAvatar(
+                                child: CircleAvatar(
                                   radius: 40,
                                   backgroundImage: user?.photoURL != null
                                       ? NetworkImage(user!.photoURL!)
@@ -159,15 +181,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         FutureBuilder<DocumentSnapshot>(
                           future: FirebaseFirestore.instance
                               .collection('users')
-                              .doc(FirebaseAuth.instance.currentUser?.email)
+                              .doc(user?.email)
                               .get(),
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
                             if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
-
                             final userType = snapshot.data!.get('type');
                             if (userType != 'Parent') return const SizedBox();
-
                             return ListTile(
                               title: const Text('Register Child', style: TextStyle(color: Colors.white)),
                               leading: const Icon(Icons.child_care_rounded, color: Colors.white),
@@ -230,19 +250,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),
-
                         FutureBuilder<DocumentSnapshot>(
                           future: FirebaseFirestore.instance
                               .collection('users')
-                              .doc(FirebaseAuth.instance.currentUser?.email)
+                              .doc(user?.email)
                               .get(),
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
                             if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
-
                             final userType = snapshot.data!.get('type');
                             if (userType != 'Admin') return const SizedBox();
-
+                            return ListTile(
+                              title: const Text('Test', style: TextStyle(color: Colors.white)),
+                              leading: const Icon(Icons.admin_panel_settings, color: Colors.white),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const AudioSummaryPage()),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                        FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user?.email)
+                              .get(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
+                            if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
+                            final userType = snapshot.data!.get('type');
+                            if (userType != 'Teacher') return const SizedBox();
                             return ListTile(
                               title: const Text('Teacher Configurations', style: TextStyle(color: Colors.white)),
                               leading: const Icon(Icons.admin_panel_settings, color: Colors.white),
@@ -255,15 +294,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         FutureBuilder<DocumentSnapshot>(
                           future: FirebaseFirestore.instance
                               .collection('users')
-                              .doc(FirebaseAuth.instance.currentUser?.email)
+                              .doc(user?.email)
                               .get(),
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox();
                             if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox();
-
                             final userType = snapshot.data!.get('type');
-                            if (userType != 'Admin') return const SizedBox();
-
+                            if (userType != 'Teacher') return const SizedBox();
                             return ListTile(
                               title: const Text('Admin Configurations', style: TextStyle(color: Colors.white)),
                               leading: const Icon(Icons.admin_panel_settings, color: Colors.white),
@@ -294,7 +331,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.indigo,
@@ -311,224 +347,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class DashboardHome extends StatelessWidget {
-  const DashboardHome({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final firstName = user?.displayName?.split(' ').first ?? user?.email ?? 'User';
-
-    final List<Map<String, dynamic>> tiles = [
-      {
-        'subject': 'Math',
-        'label': 'Addition',
-        'description': 'Lesson'
-      },
-      {
-        'subject': 'Science',
-        'label': 'Water',
-        'description': 'Lesson'
-      },
-      {
-        'subject': 'English',
-        'label': 'Grammar',
-        'description': 'Lesson'
-      },
-      {
-        'subject': 'Filipino',
-        'label': 'Tula',
-        'description': 'Lesson'
-      },
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Welcome, $firstName!',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 50),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: tiles.map((tile) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: SizedBox(
-                    width: 140,
-                    height: 140,
-                    child: DashboardTile(
-                      subject: tile['subject'],
-                      label: tile['label'],
-                      description: tile['description'],
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => DashboardSummary(
-                              subject: tile['subject'],
-                              label: tile['label'],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 50),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: tiles.map((tile) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: SizedBox(
-                    width: 140,
-                    height: 140,
-                    child: DashboardTile(
-                      subject: tile['subject'],
-                      label: tile['label'],
-                      description: tile['description'],
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => DashboardSummary(
-                              subject: tile['subject'],
-                              label: tile['label'],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class DashboardTile extends StatelessWidget {
-  final String subject;
-  final String label;
-  final String description;
-  final VoidCallback onTap;
-
-  const DashboardTile({
-    super.key,
-    required this.subject,
-    required this.label,
-    required this.description,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.amber.shade100,
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                subject,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20,),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                description,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MovingLabel extends StatefulWidget {
-  final String text;
-
-  const _MovingLabel({required this.text});
-
-  @override
-  State<_MovingLabel> createState() => _MovingLabelState();
-}
-
-class _MovingLabelState extends State<_MovingLabel> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 3),
-      vsync: this,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final offset = 40.0 * _controller.value;
-        return Transform.translate(
-          offset: Offset(offset, 0),
-          child: child,
-        );
-      },
-      child: Text(
-        widget.text,
-        style: const TextStyle(fontSize: 16),
-        overflow: TextOverflow.visible,
-      ),
-    );
-  }
-}

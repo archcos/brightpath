@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'display/mainscreen/dashboard.dart';
 import 'display/mainscreen/sidebar/admin_configuration.dart';
 import 'firebase_options.dart';
@@ -15,6 +16,31 @@ Future<void> main() async {
   try {
     // Load environment variables
     await dotenv.load(fileName: ".env");
+
+    final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+
+    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+      throw Exception('Missing Supabase credentials in .env file.');
+    }
+
+    // Initialize Supabase
+    print("Initializing Supabase...");
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+    );
+
+    // Check if Supabase is initialized by verifying the client is available
+    final supabaseClient = Supabase.instance.client;
+    if (supabaseClient != null) {
+      print("Supabase initialized successfully.");
+    } else {
+      throw Exception('Supabase failed to initialize.');
+    }
+
+
+
 
     print("Initializing Firebase...");
     await Firebase.initializeApp(

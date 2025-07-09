@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "985259787382",
+    "firebase_url": "https://brightpath-1843d-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "brightpath-1843d",
+    "storage_bucket": "brightpath-1843d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:985259787382:android:0451ed31974a6422508b57",
+        "android_client_info": {
+          "package_name": "com.brightpath.brightpath"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "985259787382-p1n3n3bc59s7k9ec9a97ntl80he74p05.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAe-d9gzPfli4Le0ouKV1nm6jtDvr8KHI8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "985259787382-p1n3n3bc59s7k9ec9a97ntl80he74p05.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:985259787382:android:8fb92e1f14051a3c508b57",
+        "android_client_info": {
+          "package_name": "com.example.bpath"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "985259787382-p1n3n3bc59s7k9ec9a97ntl80he74p05.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAe-d9gzPfli4Le0ouKV1nm6jtDvr8KHI8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "985259787382-p1n3n3bc59s7k9ec9a97ntl80he74p05.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

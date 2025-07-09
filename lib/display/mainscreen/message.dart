@@ -78,7 +78,7 @@ class _MessagesListPageState extends State<MessagesListPage> {
   }
 
   String _fmtTs(Timestamp? t) => t == null
-      ? 'Pending…'
+      ? 'Sending…'
       : DateFormat('MM-dd hh:mm a').format(t.toDate());
 
   Future<void> _markAllRead(String chatId) async {
@@ -188,17 +188,19 @@ class _MessagesListPageState extends State<MessagesListPage> {
                                         fontSize: 11)),
                               )
                                   : null,
-                              onTap: () async {
-                                await _markAllRead(chatId);
-                                if (!mounted) return;
+                              onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => ChatScreen(
-                                        userEmail: widget.userEmail,
-                                        receiverEmail: email),
+                                      userEmail: widget.userEmail,
+                                      receiverEmail: email,
+                                    ),
                                   ),
                                 );
+
+                                // Run this in the background after navigation
+                                _markAllRead(chatId);
                               },
                             ),
                           );

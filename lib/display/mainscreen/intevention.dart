@@ -71,7 +71,7 @@ class _InterventionScreenState extends State<InterventionScreen> {
 
           final due = fmt.parse(dueRaw, true).toUtc();
           final diff = due.difference(now).inDays;
-          if (diff <= 0 || diff > 2) continue;
+          if (diff < 0 || diff > 2) continue;
 
           final title = data['title'] ?? 'Untitled';
           final subject = data['subject'] ?? 'Unknown';

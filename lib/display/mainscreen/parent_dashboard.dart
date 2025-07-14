@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
-import 'calendar.dart';
-import 'sidebar/audio_summary.dart';
+import 'subscreen/audio_processor.dart';
+import 'subscreen/task_detail.dart';
 
 class DashboardHome extends StatefulWidget {
   const DashboardHome({super.key});
@@ -16,6 +17,8 @@ class _DashboardHomeState extends State<DashboardHome>
   @override
   bool get wantKeepAlive => true;
   bool _hasChildInClass = true;
+
+  bool _initialLoading = true;
 
 
   final List<String> _days = [
@@ -44,7 +47,7 @@ class _DashboardHomeState extends State<DashboardHome>
   String _base(String email) =>
       email.toLowerCase().replaceFirst(RegExp(r'\d+$'), '');
 
-  Future<String?> _findTeacherEmailForStudent(String studentEmail) async {
+  Future<Map<String, String>?> _findTeacherAndClass(String studentEmail) async {
     try {
       final classDocs = await FirebaseFirestore.instance.collection('classes').get();
 
@@ -57,26 +60,31 @@ class _DashboardHomeState extends State<DashboardHome>
         });
 
         if (found) {
-          return classDoc.data()['teacher_email'];
+          return {
+            'teacherEmail': classDoc.data()['teacher_email'],
+            'classId': classDoc.id,
+          };
         }
       }
     } catch (e) {
-      debugPrint('Error in _findTeacherEmailForStudent: $e');
+      debugPrint('Error in _findTeacherAndClass: $e');
     }
 
-    return null; // Either no class found or error occurred
+    return null;
   }
 
 
   Future<void> _fetchTeacherEmailAndInit(String userEmail) async {
     try {
-      final teacherEmail = await _findTeacherEmailForStudent(userEmail);
+      final info = await _findTeacherAndClass(userEmail);
 
       if (!mounted) return;
 
-      if (teacherEmail != null) {
-        setState(() => _teacherEmail = teacherEmail);
-        await _refreshForDate(); // summaries + tasks
+      if (info != null) {
+        setState(() {
+          _teacherEmail = info['teacherEmail'];
+        });
+        await _refreshForDate(); // fetch summaries, tasks, and run audio processor
       } else {
         setState(() {
           _teacherEmail = null;
@@ -114,14 +122,14 @@ class _DashboardHomeState extends State<DashboardHome>
             all.add(_SchedView(
               day: data['day'] ?? d.id,
               subject: e['subject'] ?? '',
-              time: '${e['start']} – ${e['end']}',
+              time: '${_formatTime(e['start'])} – ${_formatTime(e['end'])}',
             ));
           }
         } else {
           all.add(_SchedView(
             day: data['day'] ?? d.id,
             subject: data['subject'] ?? '',
-            time: '${data['start']} – ${data['end']}',
+            time: '${_formatTime(data['start'])} – ${_formatTime(data['end'])}',
           ));
         }
       }
@@ -213,6 +221,19 @@ class _DashboardHomeState extends State<DashboardHome>
     final collections = ['assignments', 'quizzes', 'projects'];
     final List<_TaskTile> results = [];
 
+    String _formatType(String collectionName) {
+      switch (collectionName) {
+        case 'assignments':
+          return 'Assignment';
+        case 'quizzes':
+          return 'Quiz';
+        case 'projects':
+          return 'Project';
+        default:
+          return collectionName[0].toUpperCase() + collectionName.substring(1);
+      }
+    }
+
     for (final col in collections) {
       final snap = await FirebaseFirestore.instance
           .collection('classes')
@@ -227,7 +248,10 @@ class _DashboardHomeState extends State<DashboardHome>
             subject: data['subject'] ?? '',
             title: data['title'] ?? '',
             dueDate: data['dueDate'] ?? '',
+            type: _formatType(col),
+            description: data['description'] ?? '',
           ));
+
         }
       }
     }
@@ -239,12 +263,78 @@ class _DashboardHomeState extends State<DashboardHome>
     });
   }
 
-  Future<void> _refreshForDate() async {
+  String _formatTime(String time24) {
+    try {
+      final dt = DateFormat('HH:mm').parse(time24);
+      return DateFormat('h:mm a').format(dt);
+    } catch (e) {
+      return time24;
+    }
+  }
+
+  Future<String> _getClassIdByTeacherEmail(String teacherEmail) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('classes')
+        .where('teacher_email', isEqualTo: teacherEmail)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isNotEmpty) {
+      return snap.docs.first.id;
+    } else {
+      throw Exception('Class not found for $teacherEmail');
+    }
+  }
+
+
+
+  Future<void> _refreshForDate({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() {
+        _loadingSummaries = true;
+        _loadingTasks = true;
+      });
+    }
+
+    if (_teacherEmail != null) {
+      final classSnap = await FirebaseFirestore.instance
+          .collection('classes')
+          .where('teacher_email', isEqualTo: _teacherEmail)
+          .limit(1)
+          .get();
+
+      if (classSnap.docs.isNotEmpty) {
+        final classId = classSnap.docs.first.id;
+        final String assemblyApiKey = dotenv.env['ASSEMBLY_API_KEY'] ?? '';
+        final String geminiApiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+
+        // Run AudioProcessor and wait until it completes
+        final processor = AudioProcessor(
+          teacherEmail: _teacherEmail!,
+          classId: classId,
+          assemblyApiKey: assemblyApiKey,
+          geminiApiKey: geminiApiKey,
+        );
+
+        await processor.runForToday();
+      }
+    }
+
     await Future.wait([
       _fetchSummariesForDate(),
       _fetchTasksForDate(),
     ]);
+
+    if (mounted && showLoader) {
+      setState(() {
+        _loadingSummaries = false;
+        _loadingTasks = false;
+      });
+    }
   }
+
+
+
 
   @override
   void initState() {
@@ -255,13 +345,41 @@ class _DashboardHomeState extends State<DashboardHome>
     final email = FirebaseAuth.instance.currentUser?.email;
     if (email != null) {
       _loadSchedules(email);
-      _fetchTeacherEmailAndInit(email);
+      _fetchTeacherEmailAndInit(email).then((_) {
+        if (mounted) {
+          setState(() => _initialLoading = false);
+        }
+      });
+    } else {
+      _initialLoading = false;
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    if (_initialLoading) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Getting your lesson summary and tasks...',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+
 
     final user = FirebaseAuth.instance.currentUser;
     final firstName =
@@ -273,10 +391,13 @@ class _DashboardHomeState extends State<DashboardHome>
       onRefresh: () async {
         final email = FirebaseAuth.instance.currentUser?.email;
         if (email != null) {
+          setState(() => _initialLoading = true); // Show "Getting your lesson..."
           await _loadSchedules(email);
           await _refreshForDate();
+          setState(() => _initialLoading = false);
         }
       },
+
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: ListView(
@@ -322,15 +443,6 @@ class _DashboardHomeState extends State<DashboardHome>
               },
             ),
             const SizedBox(height: 5),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.graphic_eq),
-              label: const Text('Audio Summary'),
-              onPressed: () {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AudioSummaryPage()));
-              },
-            ),
-            const SizedBox(height: 5),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -339,8 +451,9 @@ class _DashboardHomeState extends State<DashboardHome>
                     setState(() {
                       _selectedDate = _selectedDate.subtract(const Duration(days: 1));
                     });
-                    _refreshForDate();
+                    _refreshForDate(showLoader: false); // Just reload tiles
                   },
+
                   child: const Text('<'),
                 ),
                 const SizedBox(width: 12),
@@ -357,126 +470,157 @@ class _DashboardHomeState extends State<DashboardHome>
                     setState(() {
                       _selectedDate = _selectedDate.add(const Duration(days: 1));
                     });
-                    _refreshForDate();
+                    _refreshForDate(showLoader: false);
                   },
+
                   child: const Text('>'),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 16),
+            const Row(
+              children: [
+                Icon(Icons.article, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Summaries',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              ],
+            ),
+            const SizedBox(height: 8),
             if (_loadingSummaries)
               const Center(child: CircularProgressIndicator())
             else if (_summariesForDate.isEmpty)
-              const Text('No summaries for this date.',
-                  style: TextStyle(color: Colors.white))
+              const Text('No summaries for this date.', style: TextStyle(color: Colors.white))
             else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: _summariesForDate
-                      .map((d) => Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: SizedBox(
-                      width: 140,
-                      height: 90,
-                      child: _Tile(
-                          subject: d.subject,
-                          topic: d.topic,
-                          summary: d.summary),
-                    ),
-                  ))
-                      .toList(),
+              Center(
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  alignment: WrapAlignment.center,
+                  children: _summariesForDate.map((d) => SizedBox(
+                    width: 140,
+                    height: 90,
+                    child: _Tile(subject: d.subject, topic: d.topic, summary: d.summary),
+                  )).toList(),
                 ),
               ),
 
-            const SizedBox(height: 10),
 
+            const SizedBox(height: 24),
+            const Row(
+              children: [
+                Icon(Icons.task_alt, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Tasks',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              ],
+            ),
+            const SizedBox(height: 8),
             if (_loadingTasks)
               const Center(child: CircularProgressIndicator())
             else if (_tasksForDate.isEmpty)
-              const Text('No tasks for this date.',
-                  style: TextStyle(color: Colors.white))
+              const Text('No tasks for this date.', style: TextStyle(color: Colors.white))
             else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: _tasksForDate
-                      .map((task) => Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const CalendarScreen()));
-                      },
-                      child: SizedBox(
-                        width: 140,
-                        height: 100,
-                        child: Card(
-                          color: Colors.pink.shade100,
-                          elevation: 3,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    task.subject,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey.shade800,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false,
-                                  ),
+              Center(
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  alignment: WrapAlignment.center,
+                  children: _tasksForDate.map((task) => InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailPage(
+                            title: task.title,
+                            subject: task.subject,
+                            dueDate: task.dueDate,
+                            type: task.type,
+                            description: task.description,
+                          ),
+                        ),
+                      );
+                    },
+                    child: SizedBox(
+                      width: 140,
+                      height: 100,
+                      child: Card(
+                        color: Colors.pink.shade100,
+                        elevation: 3,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              return ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: constraints.maxWidth,
+                                  minHeight: 100,
                                 ),
-                                const SizedBox(height: 8),
-                                Flexible(
-                                  child: Text(
-                                    task.title,
-                                    style: TextStyle(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      task.type,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.deepPurple,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      task.subject,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey.shade800,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      task.title,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.grey.shade900,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      'Due: ${task.dueDate}',
+                                      style: const TextStyle(
                                       fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey.shade900,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.red,
                                     ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
-                                const Spacer(),
-                                Text(
-                                  'Due: ${task.dueDate}',
-                                  style: const TextStyle(fontSize: 12),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                ),
-                              ],
-                            )
+                              );
+                            },
                           ),
                         ),
                       ),
                     ),
-                  ))
-                      .toList(),
+                  )).toList(),
                 ),
               ),
+
 
 
             if (user != null) ...[
               Row(
                 children: [
-                  const Text('Schedule for: ',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white)),
+                  const Icon(Icons.schedule, color: Colors.white),
+                  const SizedBox(width: 8),
+                  const Text('Schedule for:',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(width: 10),
                   DropdownButton<String>(
                     value: _selectedDay,
@@ -492,8 +636,29 @@ class _DashboardHomeState extends State<DashboardHome>
               ),
               const SizedBox(height: 12),
               if (filtered.isEmpty)
-                Text('No schedule for $_selectedDay.',
-                    style: const TextStyle(color: Colors.white))
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      'No schedule for $_selectedDay.',
+                      style: const TextStyle(color: Colors.white),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              else if (filtered.length <= 2)
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  alignment: WrapAlignment.center,
+                  children: filtered
+                      .map((e) => SizedBox(
+                    width: 140,
+                    height: 80,
+                    child: _ScheduleTile(view: e),
+                  ))
+                      .toList(),
+                )
               else
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -509,6 +674,7 @@ class _DashboardHomeState extends State<DashboardHome>
                         .toList(),
                   ),
                 ),
+
             ],
           ],
         ),
@@ -517,7 +683,6 @@ class _DashboardHomeState extends State<DashboardHome>
   }
 }
 
-/* ───────────────── Data holders ───────────────── */
 
 class _SchedView {
   final String day;
@@ -526,12 +691,25 @@ class _SchedView {
   _SchedView({required this.day, required this.subject, required this.time});
 }
 
+extension StringCasingExtension on String {
+  String capitalize() => length > 0 ? '${this[0].toUpperCase()}${substring(1)}' : '';
+}
+
 class _TaskTile {
   final String subject;
   final String title;
   final String dueDate;
-  _TaskTile(
-      {required this.subject, required this.title, required this.dueDate});
+  final String type;
+  final String description;
+
+
+  _TaskTile({
+    required this.subject,
+    required this.title,
+    required this.dueDate,
+    required this.type,
+    required this.description,
+  });
 }
 
 class _SummaryTileData {
@@ -542,7 +720,6 @@ class _SummaryTileData {
       {required this.subject, required this.topic, required this.summary});
 }
 
-/* ───────────────── UI pieces ───────────────── */
 
 class _Tile extends StatelessWidget {
   final String subject;
@@ -573,13 +750,13 @@ class _Tile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(subject,
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade800),
+                      fontWeight: FontWeight.w900,
+                      color: Colors.deepPurple),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Expanded(
                 child: Center(
                   child: Text(topic,
@@ -636,15 +813,53 @@ class _SummaryDetail extends StatelessWidget {
   final String subject;
   final String topic;
   final String summary;
-  const _SummaryDetail(
-      {required this.subject, required this.topic, required this.summary});
+
+  const _SummaryDetail({
+    required this.subject,
+    required this.topic,
+    required this.summary,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('$subject – $topic')),
+      appBar: AppBar(
+        title: Text(
+          subject,
+          style: const TextStyle(fontSize: 20),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Text(summary, style: const TextStyle(fontSize: 16)),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Text(
+                  'Main Topic: $topic',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                summary,
+                style: const TextStyle(fontSize: 16, height: 1.5),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

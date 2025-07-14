@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,8 +19,9 @@ class _AudioSummaryPageState extends State<AudioSummaryPage> {
   final supabase = Supabase.instance.client;
   final firestore = FirebaseFirestore.instance;
 
-  final assemblyApiKey = 'fc605982a2944a37a7d40838c728eeb3';
-  final geminiApiKey = 'AIzaSyBVZ7B5007uwy3HBlvjK4vOBC2kgK9-xD0';
+
+  final String assemblyApiKey = dotenv.env['ASSEMBLY_API_KEY'] ?? '';
+  final String geminiApiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
 
   final String bucket = 'audio';
   String prefix = '';

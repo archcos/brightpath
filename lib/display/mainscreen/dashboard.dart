@@ -1,3 +1,4 @@
+import 'package:bpath/display/mainscreen/sidebar/my_children.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +8,6 @@ import 'intevention.dart';
 import 'message.dart';
 import 'parent_dashboard.dart';
 import 'reminder.dart';
-import 'sidebar/add_child.dart';
 import 'sidebar/audio_summary.dart';
 import 'sidebar/contact_us.dart';
 import 'sidebar/profile.dart';
@@ -51,38 +51,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final email = FirebaseAuth.instance.currentUser?.email;
     if (email == null) return;
 
-    final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
 
+      if (!mounted || !doc.exists) return;
 
-    if (mounted && doc.exists) {
+      final type = doc.data()?['type'];
+      if (type == null) return;
+
       setState(() {
-        _userType = doc.data()?['type'];
-        final homePage = (_userType == 'Parent')
+        _userType = type;
+        final homePage = (type == 'Parent')
             ? const DashboardHome()
             : const TeacherDashboardPage();
 
         _pages.addAll([
           homePage,
           const CalendarScreen(),
-          if (_userType == 'Parent')
-            ReminderScreen(pendingNotifier: _pendingNotifier),   // ← pass it
-          if (_userType == 'Parent')
-            InterventionScreen(),
+          if (type == 'Parent') ReminderScreen(pendingNotifier: _pendingNotifier),
+          if (type == 'Parent') InterventionScreen(),
           MessagesListPage(userEmail: email),
         ]);
 
         _navIndexMap = {
           'home': 0,
           'calendar': 1,
-          if (_userType == 'Parent') ...{
+          if (type == 'Parent') ...{
             'reminder': 2,
             'intervention': 3,
             'message': 4,
           } else ...{
-            'message': 2, // index shifts if reminder/intervention not shown
+            'message': 2,
           }
         };
       });
+    } catch (e, stack) {
+      debugPrint('Error loading user type: $e');
+      // Optional: report to Crashlytics or log
     }
   }
 
@@ -241,12 +246,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             final userType = snapshot.data!.get('type');
                             if (userType != 'Parent') return const SizedBox();
                             return ListTile(
-                              title: const Text('Register Child', style: TextStyle(color: Colors.white)),
+                              title: const Text('My Children', style: TextStyle(color: Colors.white)),
                               leading: const Icon(Icons.child_care_rounded, color: Colors.white),
                               onTap: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => const AddChildScreen()),
+                                  MaterialPageRoute(builder: (_) => const MyChildrenPage()),
                                 );
                               },
                             );

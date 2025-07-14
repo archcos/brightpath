@@ -37,24 +37,26 @@ class _InterventionScreenState extends State<InterventionScreen> {
 
     try {
       final userEmail = FirebaseAuth.instance.currentUser?.email;
-      if (userEmail == null) throw Exception('Not signed in.');
+      if (userEmail == null) throw Exception('User not signed in.');
 
       final studentsSnap = await firestore.collectionGroup('students').get();
       DocumentReference<Map<String, dynamic>>? classRef;
 
       for (final doc in studentsSnap.docs) {
-        if (_base(doc.id) == _base(userEmail)) {
+        final docId = doc.id;
+        if (docId.isEmpty) continue;
+        if (_base(docId) == _base(userEmail)) {
           classRef = doc.reference.parent.parent;
           break;
         }
       }
-      if (classRef == null) throw Exception('Class not found.');
+
+      if (classRef == null) throw Exception('No matching class found.');
 
       final classId = classRef.id;
       final cols = ['assignments', 'quizzes', 'projects'];
       final now = DateTime.now().toUtc().add(const Duration(hours: 8));
       final fmt = DateFormat('yyyy-MM-dd');
-
       final List<_Intervention> out = [];
 
       for (final col in cols) {
@@ -69,7 +71,13 @@ class _InterventionScreenState extends State<InterventionScreen> {
           final dueRaw = data['dueDate'] ?? '';
           if (dueRaw is! String || dueRaw.isEmpty) continue;
 
-          final due = fmt.parse(dueRaw, true).toUtc();
+          DateTime due;
+          try {
+            due = fmt.parse(dueRaw, true).toUtc();
+          } catch (_) {
+            continue;
+          }
+
           final diff = due.difference(now).inDays;
           if (diff < 0 || diff > 2) continue;
 
@@ -77,8 +85,12 @@ class _InterventionScreenState extends State<InterventionScreen> {
           final subject = data['subject'] ?? 'Unknown';
           final description = data['description'] ?? '';
 
-          final suggestion =
-          await _generateSuggestion(subject, title, description, dueRaw);
+          String suggestion;
+          try {
+            suggestion = await _generateSuggestion(subject, title, description, dueRaw);
+          } catch (_) {
+            suggestion = 'Could not generate suggestion.';
+          }
 
           out.add(_Intervention(
             title: title,
@@ -95,13 +107,12 @@ class _InterventionScreenState extends State<InterventionScreen> {
         _interventions = out;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error: $e')));
+      // Error silently caught — no snackbar
     }
   }
 

@@ -2,57 +2,59 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class AddChildScreen extends StatefulWidget {
-  const AddChildScreen({super.key});
+class EditChildScreen extends StatefulWidget {
+  final Map<String, dynamic> childData;
+
+  const EditChildScreen({super.key, required this.childData});
 
   @override
-  State<AddChildScreen> createState() => _AddChildScreenState();
+  State<EditChildScreen> createState() => _EditChildScreenState();
 }
 
-class _AddChildScreenState extends State<AddChildScreen> {
+class _EditChildScreenState extends State<EditChildScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _ageController = TextEditingController();
-  String _gender = 'Male';
-  bool _isSaving = false;
+  late final TextEditingController _firstNameController;
+  late final TextEditingController _middleNameController;
+  late final TextEditingController _lastNameController;
+  late final TextEditingController _suffixController;
+  late final TextEditingController _ageController;
+  late String _gender;
 
-  Future<void> _saveChild() async {
+  @override
+  void initState() {
+    super.initState();
+    _firstNameController = TextEditingController(text: widget.childData['first_name']);
+    _middleNameController = TextEditingController(text: widget.childData['middle_name']);
+    _lastNameController = TextEditingController(text: widget.childData['last_name']);
+    _suffixController = TextEditingController(text: widget.childData['suffix']);
+    _ageController = TextEditingController(text: widget.childData['age'].toString());
+    _gender = widget.childData['gender'] ?? 'Male';
+  }
+
+  Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.email == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not logged in')),
-      );
-      return;
-    }
+    final parentEmail = FirebaseAuth.instance.currentUser?.email;
+    if (parentEmail == null) return;
 
-    final parentEmail = user.email!;
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
-    final childDocId = '$firstName$lastName';
-
-    final childData = {
-      'first_name': firstName,
-      'last_name': lastName,
-      'gender': _gender,
+    final updatedData = {
+      'first_name': _firstNameController.text.trim(),
+      'middle_name': _middleNameController.text.trim(),
+      'last_name': _lastNameController.text.trim(),
+      'suffix': _suffixController.text.trim(),
       'age': int.tryParse(_ageController.text.trim()) ?? 0,
+      'gender': _gender,
     };
-
-    setState(() => _isSaving = true);
 
     await FirebaseFirestore.instance
         .collection('users')
         .doc(parentEmail)
         .collection('children')
-        .doc(childDocId)
-        .set(childData);
-
-    setState(() => _isSaving = false);
+        .doc(widget.childData['id'])
+        .update(updatedData);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Child added successfully')),
+      const SnackBar(content: Text('Child info updated')),
     );
 
     Navigator.pop(context);
@@ -61,7 +63,9 @@ class _AddChildScreenState extends State<AddChildScreen> {
   @override
   void dispose() {
     _firstNameController.dispose();
+    _middleNameController.dispose();
     _lastNameController.dispose();
+    _suffixController.dispose();
     _ageController.dispose();
     super.dispose();
   }
@@ -69,7 +73,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Child')),
+      appBar: AppBar(title: const Text('Edit Child')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -84,10 +88,20 @@ class _AddChildScreenState extends State<AddChildScreen> {
               ),
               const SizedBox(height: 12),
               TextFormField(
+                controller: _middleNameController,
+                decoration: const InputDecoration(labelText: 'Middle Name (optional)'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
                 controller: _lastNameController,
                 decoration: const InputDecoration(labelText: 'Last Name'),
                 validator: (value) =>
                 value == null || value.isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _suffixController,
+                decoration: const InputDecoration(labelText: 'Suffix (e.g., Jr., III)'),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -113,9 +127,9 @@ class _AddChildScreenState extends State<AddChildScreen> {
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
-                onPressed: _isSaving ? null : _saveChild,
+                onPressed: _saveChanges,
                 icon: const Icon(Icons.save),
-                label: Text(_isSaving ? 'Saving...' : 'Save Child'),
+                label: const Text('Save Changes'),
               ),
             ],
           ),

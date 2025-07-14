@@ -19,6 +19,7 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
   String? selectedClassLabel;
   String studentSearchQuery = '';
   late final String? currentUserEmail;
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -41,9 +42,12 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
   }
 
   Future<void> _loadEligibleChildren() async {
+    setState(() => isLoading = true);
+
     final usersSnap =
     await FirebaseFirestore.instance.collection('users').get();
     final List<Map<String, dynamic>> children = [];
+
     for (var userDoc in usersSnap.docs) {
       if (userDoc.data()['type'] == 'Parent') {
         final kidsSnap = await userDoc.reference.collection('children').get();
@@ -52,13 +56,19 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
           children.add({
             'id': kid.id,
             'first_name': data['first_name'] ?? '',
+            'middle_name': data['middle_name'] ?? '',
             'last_name': data['last_name'] ?? '',
+            'suffix': data['suffix'] ?? '',
             'parent_email': userDoc.id,
           });
         }
       }
     }
-    setState(() => availableStudents = children);
+
+    setState(() {
+      availableStudents = children;
+      isLoading = false;
+    });
   }
 
   Future<void> _loadStudentsInClass(String classId) async {
@@ -67,13 +77,18 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
         .doc(classId)
         .collection('students')
         .get();
-    final emails = snap.docs
-        .map((d) => d.get('parent_email') as String? ?? '')
-        .toSet();
-    final ids = availableStudents
-        .where((s) => emails.contains(s['parent_email']))
-        .map((s) => s['id'] as String)
-        .toSet();
+
+    final classStudentKeys = snap.docs.map((d) {
+      final data = d.data();
+      return '${data['parent_email']}-${data['first_name']}-${data['middle_name'] ?? ''}-${data['last_name']}-${data['suffix'] ?? ''}';
+    }).toSet();
+
+    final ids = availableStudents.where((s) {
+      final key =
+          '${s['parent_email']}-${s['first_name']}-${s['middle_name']}-${s['last_name']}-${s['suffix']}';
+      return classStudentKeys.contains(key);
+    }).map((s) => s['id'] as String).toSet();
+
     setState(() => selectedStudentIds = ids);
   }
 
@@ -95,31 +110,60 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
       );
       return;
     }
+
     final studentsRef = FirebaseFirestore.instance
         .collection('classes')
         .doc(selectedClassId)
         .collection('students');
+
     final existingSnap = await studentsRef.get();
+
+    // Create a set of unique student keys for comparison
+    final existingKeys = existingSnap.docs.map((d) {
+      final data = d.data();
+      return '${data['parent_email']}-${data['first_name']}-${data['middle_name'] ?? ''}-${data['last_name']}-${data['suffix'] ?? ''}';
+    }).toSet();
+
     final batch = FirebaseFirestore.instance.batch();
-    final existingIds = existingSnap.docs.map((d) => d.id).toSet();
+
+    // Remove students no longer selected
     for (var doc in existingSnap.docs) {
-      final base = doc.id.replaceFirst(RegExp(r'\d+$'), '');
-      final keep = availableStudents.any((s) =>
+      final data = doc.data();
+      final match = availableStudents.any((s) =>
       selectedStudentIds.contains(s['id']) &&
-          s['parent_email'] == base);
-      if (!keep) batch.delete(doc.reference);
+          s['parent_email'] == data['parent_email'] &&
+          s['first_name'] == data['first_name'] &&
+          s['middle_name'] == (data['middle_name'] ?? '') &&
+          s['last_name'] == data['last_name'] &&
+          s['suffix'] == (data['suffix'] ?? '')
+      );
+
+      if (!match) {
+        batch.delete(doc.reference);
+      }
     }
-    final usedIds = existingIds.toSet();
+
+    final usedIds = existingSnap.docs.map((d) => d.id).toSet();
+
+    // Add newly selected students
     for (var s in availableStudents) {
       if (!selectedStudentIds.contains(s['id'])) continue;
+
+      final key = '${s['parent_email']}-${s['first_name']}-${s['middle_name']}-${s['last_name']}-${s['suffix']}';
+      if (existingKeys.contains(key)) continue; // Skip if already added
+
       final email = s['parent_email'] as String;
       final docId = _uniqueId(email, usedIds);
+
       batch.set(studentsRef.doc(docId), {
         'first_name': s['first_name'],
+        'middle_name': s['middle_name'],
         'last_name': s['last_name'],
+        'suffix': s['suffix'],
         'parent_email': email,
       });
     }
+
     await batch.commit();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Class updated successfully')),
@@ -177,7 +221,7 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
               readOnly: true,
               controller: TextEditingController(text: selectedClassLabel),
               decoration: const InputDecoration(
-                labelText: 'Class',
+                labelText: 'Select Class',
                 suffixIcon: Icon(Icons.arrow_drop_down),
                 border: OutlineInputBorder(),
               ),
@@ -199,13 +243,17 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: filteredStudents.isEmpty
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : filteredStudents.isEmpty
                 ? const Center(child: Text('No matching students'))
                 : ListView.builder(
               itemCount: filteredStudents.length,
               itemBuilder: (_, i) {
                 final s = filteredStudents[i];
-                final full = '${s['first_name']} ${s['last_name']}';
+                final full = '${s['first_name']} ${s['middle_name']} ${s['last_name']} ${s['suffix']}'
+                    .trim()
+                    .replaceAll(RegExp(r'\s+'), ' ');
                 return CheckboxListTile(
                   title: Text(full),
                   subtitle: Text('Parent: ${s['parent_email']}'),
@@ -218,7 +266,7 @@ class _AddStudentToClassScreenState extends State<AddStudentToClassScreen> {
                 );
               },
             ),
-          ),
+          )
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(

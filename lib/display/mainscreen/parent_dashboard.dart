@@ -15,6 +15,8 @@ class _DashboardHomeState extends State<DashboardHome>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+  bool _hasChildInClass = true;
+
 
   final List<String> _days = [
     'Monday',
@@ -42,26 +44,60 @@ class _DashboardHomeState extends State<DashboardHome>
   String _base(String email) =>
       email.toLowerCase().replaceFirst(RegExp(r'\d+$'), '');
 
+  Future<String?> _findTeacherEmailForStudent(String studentEmail) async {
+    try {
+      final classDocs = await FirebaseFirestore.instance.collection('classes').get();
+
+      for (final classDoc in classDocs.docs) {
+        final studentsSnap = await classDoc.reference.collection('students').get();
+
+        final found = studentsSnap.docs.any((doc) {
+          final data = doc.data();
+          return data['parent_email'] == studentEmail;
+        });
+
+        if (found) {
+          return classDoc.data()['teacher_email'];
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in _findTeacherEmailForStudent: $e');
+    }
+
+    return null; // Either no class found or error occurred
+  }
+
+
   Future<void> _fetchTeacherEmailAndInit(String userEmail) async {
-    final classes =
-    await FirebaseFirestore.instance.collection('classes').get();
-    for (final classDoc in classes.docs) {
-      final studentDoc =
-      await classDoc.reference.collection('students').doc(userEmail).get();
-      if (studentDoc.exists) {
-        final teacherEmail = classDoc.data()['teacher_email'];
-        if (!mounted) return;
+    try {
+      final teacherEmail = await _findTeacherEmailForStudent(userEmail);
+
+      if (!mounted) return;
+
+      if (teacherEmail != null) {
         setState(() => _teacherEmail = teacherEmail);
         await _refreshForDate(); // summaries + tasks
-        return;
+      } else {
+        setState(() {
+          _teacherEmail = null;
+          _summariesForDate.clear();
+          _tasksForDate.clear();
+        });
       }
+    } catch (e) {
+      debugPrint('Error in _fetchTeacherEmailAndInit: $e');
+      if (!mounted) return;
+      setState(() {
+        _teacherEmail = null;
+        _summariesForDate.clear();
+        _tasksForDate.clear();
+      });
     }
   }
 
   Future<void> _loadSchedules(String email) async {
     final base = _base(email);
-    final students =
-    await FirebaseFirestore.instance.collectionGroup('students').get();
+    final students = await FirebaseFirestore.instance.collectionGroup('students').get();
     final seenClasses = <String>{};
     final List<_SchedView> all = [];
 
@@ -92,8 +128,13 @@ class _DashboardHomeState extends State<DashboardHome>
     }
 
     if (!mounted) return;
-    setState(() => _schedules = all);
+
+    setState(() {
+      _schedules = all;
+      _hasChildInClass = all.isNotEmpty;
+    });
   }
+
 
   Future<void> _fetchSummariesForDate() async {
     if (_teacherEmail == null) return;
@@ -240,6 +281,23 @@ class _DashboardHomeState extends State<DashboardHome>
         padding: const EdgeInsets.all(16),
         child: ListView(
           children: [
+            if (!_hasChildInClass) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'No child is in a class yet.\n\n'
+                      'Please contact your child\'s teacher to add them to a class, '
+                      'or register your child first if not yet registered.',
+                  style: TextStyle(color: Colors.black87, fontSize: 14),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             Text('Welcome, $firstName!',
                 style: const TextStyle(
                     fontSize: 20,
